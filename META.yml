@@ -1,0 +1,17 @@
+--- #YAML:1.0
+name:                Video-Dumper-QuickTime
+version:             1.0000
+abstract:            Dump QuickTime movie file structure
+license:             ~
+author:              
+    - Peter Jaquiery (grandpa@cpan.org)
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
+    IO::File:                      1.1301
+    Test::More:                    0.62
+    Test::Pod:                     1.26
+    Test::Pod::Coverage:           1.08
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3

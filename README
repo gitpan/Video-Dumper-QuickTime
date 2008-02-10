@@ -1,0 +1,135 @@
+NAME
+    Video::Dumper::QuickTime - Dump QuickTime movie file structure
+
+VERSION
+    Version 1.0000
+
+SYNOPSIS
+        use Video::Dumper::QuickTime;
+        my $file = QuickTime->new( -filename => $filename, -progress => \&showProgress );
+
+        eval {$file->Dump ()};
+        print "Error during processing: $@\n" if $@;
+
+        my $dumpStr = $file->Result ();
+
+DESCRIPTION
+    Video::Dumper::QuickTime parses a QuickTime movie file and generates a
+    multi-line string describing the structure of the file.
+
+    The module is intended primarily as a diagnostic tool, although it would
+    be possible to subclass Video::Dumper::QuickTime to extract various
+    sections of a QuickTime file.
+
+   new
+    Create a new "Video::Dumper::QuickTime" instance.
+
+        my $msi = QuickTime->new (-filename => $filename);
+
+    *-file*: required
+        the QuickTime movie file to open
+
+    *-progress*: optional
+        reference to a callback sub to display parsing progress.
+
+        The progress sub is passed two parameters, the current position and
+        the total work to be done. A typical callback sub would look like:
+
+            sub showProgress {
+                my ( $pos, $total ) = @_;
+                ...
+            }
+
+  Subclassing QuickTime
+    Because there are a huge number of atom types used by QuickTime (many of
+    them undocumented) and the number of atom types used is increasing over
+    time, Video::Dumper::QuickTime makes no attempt to decode all atom
+    types. Instead it is easy to subclass the QuickTime class to add
+    decoders for atoms of interest, or to change the way atoms that are
+    currently handled by the QuickTime class are decoded for some particular
+    application.
+
+    Two methods need to be provided for decoding of an atom. They are of the
+    form:
+
+        sub name_xxxx {
+            my $self = shift;
+            return 'The xxxx atom';
+        }
+
+        sub dump_xxxx {
+            my $self = shift;
+            my ( $pos, $len ) = @_;
+
+            ...
+        }
+
+    where the "xxxx" is a placeholder for the atom four char code.
+
+    A complete subclass package that handles one atom might look like:
+
+        package Subclass;
+
+        use QuickTime;
+        use base qw(QuickTime);
+
+        sub name_smhd {
+            my $self = shift;
+            return 'The smhd atom';
+        }
+
+        sub dump_smhd {
+            my $self = shift;
+            my ( $pos, $len ) = @_;
+        }
+
+    There is of course no limit practical to the number of handlers added by
+    a subclass.
+
+REMARKS
+    This module recognises a subset of the atoms actually used by QuickTime
+    files. Generally, well formed files should not present a problem because
+    unrecognised atoms will be reported and skipped.
+
+    Subclassing Video::Dumper::QuickTime as shown above allows handlers to
+    be added for unrecognised atoms. The author would appreciate any such
+    handler code being forwarded for inclusion in future versions of the
+    module.
+
+BUGS
+    Please report any bugs or feature requests to
+    "bug-video-dumper-quicktime at rt.cpan.org", or through the web
+    interface at
+    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Video-Dumper-QuickTime>.
+    I will be notified, and then you'll automatically be notified of
+    progress on your bug as I make changes.
+
+SUPPORT
+    This module is supported by the author through CPAN. The following links
+    may be of assistance:
+
+    * AnnoCPAN: Annotated CPAN documentation
+        <http://annocpan.org/dist/Video-Dumper-QuickTime>
+
+    * CPAN Ratings
+        <http://cpanratings.perl.org/d/Video-Dumper-QuickTime>
+
+    * RT: CPAN's request tracker
+        <http://rt.cpan.org/NoAuth/Bugs.html?Dist=Video-Dumper-QuickTime>
+
+    * Search CPAN
+        <http://search.cpan.org/dist/Video-Dumper-QuickTime>
+
+AUTHOR
+        Peter Jaquiery
+        CPAN ID: GRANDPA
+        grandpa@cpan.org
+
+COPYRIGHT & LICENSE
+    This program is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
+
+    The full text of the license can be found in the LICENSE file included
+    with this module.
+
+SEE ALSO
