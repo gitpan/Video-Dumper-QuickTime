@@ -6,9 +6,9 @@ plan skip_all => "Test::Pod::Coverage 1.00 required for testing POD coverage"
 
 plan (tests => 1);
 pod_coverage_ok(
-    "Win32::MSI::HighLevel",
+    "Video::Dumper::QuickTime",
     { also_private => [ qr/^(dump|name)?_/ ], },
-    "Win32::MSI::HighLevel, with leading underscore functions as privates\n",
+    "Video::Dumper::QuickTime, with leading underscore functions as privates\n",
 );
 
 
