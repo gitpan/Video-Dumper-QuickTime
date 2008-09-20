@@ -1,4 +1,7 @@
 package Video::Dumper::QuickTime;
+
+require 5.007003;    # for Encode
+
 use strict;
 use warnings;
 use Carp;
@@ -8,7 +11,7 @@ use IO::File;
 BEGIN {
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    $VERSION     = '1.0001';
+    $VERSION     = '1.0003';
     @ISA         = qw(Exporter);
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
@@ -21,7 +24,7 @@ Video::Dumper::QuickTime - Dump QuickTime movie file structure
 
 =head1 VERSION
 
-Version 1.0001
+Version 1.0003
 
 =head1 SYNOPSIS
 
@@ -62,9 +65,25 @@ Create a new C<Video::Dumper::QuickTime> instance.
 
 =over 4
 
-=item I<-file>: required
+=item I<-filename>: required
 
 the QuickTime movie file to open
+
+=item I<-noise>: optional
+
+Set error reporting level.
+
+Currently recognised levels are:
+
+=over 4
+
+=item 0: no reporting
+
+=item 1: report unknown atoms
+
+=item 2: report non-decoded parameters and nested atoms
+
+=back
 
 =item I<-progress>: optional
 
@@ -100,6 +119,7 @@ sub _init {
     $self->{indent}    ||= '';
     $self->{result}       = '';
     $self->{unknownAtoms} = {};
+    $self->{noise}        = 2 unless exists $self->{noise};
     return $self;
 }
 
@@ -113,19 +133,16 @@ sub _init_attributes {
         $param{$1} = $raw{$_};
     }
 
+    $self->{noise}      = $param{noise};
     $self->{parsedSize} = 0;
-    $self->{progress} = $param{progress} if exists $param{progress};
+    $self->{progress}   = $param{progress} if exists $param{progress};
 
     my $filename = $param{filename};
-    return if !defined $filename;
+    croak "filename parameter required" unless defined $filename;
     $self->{filename} = $filename;
-    $self->{filesize} = -s $filename;
-    $self->_openFile ();
-}
+    croak "File not found: $filename" unless -f $filename;
 
-sub _openFile {
-    my $self = shift;
-
+    $self->{filesize}   = -s $filename;
     $self->{nextUpdate} = $self->{filesize} / 100;
 
     my $fh = new IO::File;
@@ -375,7 +392,7 @@ sub describeAtom {
     $name = $self->can ($name) ? $self->$name () . ' ' : '';
 
     my $header = sprintf "'%s' %s@ %s (0x%08x) for %s (0x%08x):", $key, $name,
-      groupDigits ($pos), $pos, groupDigits ($len), $len;
+        groupDigits ($pos), $pos, groupDigits ($len), $len;
 
     $self->append ("$header\n");
     $self->{indent} .= $self->{indentStr};
@@ -383,13 +400,12 @@ sub describeAtom {
         push @{$self->{atomStack}}, [$key, {}];
         $self->$member ($pos, $len);
         pop @{$self->{atomStack}};
-    }
-    else {
+    } else {
         $self->append ("   Unhandled: length = " . groupDigits ($len) . "\n");
         $self->dumpBlock ($pos + 8, $len > 24 ? 16 : $len - 8) if $len > 8;
-        if (!$self->{unknownAtoms}{$key}++) {
+        if (!$self->{unknownAtoms}{$key}++ && $self->{noise}) {
             printf "Unknown atom '%s' %s (0x%08x) long at %s (0x%08x))\n", $key,
-              groupDigits ($pos), $pos, groupDigits ($len), $len;
+                groupDigits ($pos), $pos, groupDigits ($len), $len;
         }
     }
     $self->{indent} = substr $self->{indent}, length $self->{indentStr};
@@ -598,7 +614,7 @@ sub name_alis {
 
 sub dump_clip {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_clip {
@@ -608,7 +624,7 @@ sub name_clip {
 
 sub dump_cmov {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_cmov {
@@ -618,10 +634,10 @@ sub name_cmov {
 
 sub dump_code {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_code {
@@ -631,8 +647,9 @@ sub name_code {
 
 sub dump_data {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
+
 
 sub name_data {
     my $self = shift;
@@ -642,7 +659,7 @@ sub name_data {
 sub dump_dcom {
     my $self = shift;
 
-    $self->append( 'Compression type: ', $self->get4Char(), "\n" );
+    $self->append ('Compression type: ', $self->get4Char (), "\n");
 }
 
 sub name_dcom {
@@ -653,7 +670,7 @@ sub name_dcom {
 sub dump_dflt {
     my $self = shift;
 
-    $self->atomList(@_);
+    $self->atomList (@_);
 }
 
 sub name_dflt {
@@ -664,7 +681,7 @@ sub name_dflt {
 sub dump_dinf {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_dint {
@@ -675,8 +692,8 @@ sub name_dint {
 sub dump_dref {
     my $self = shift;
 
-    $self->append("\n");
-    $self->atomList(@_);
+    $self->append   ("\n");
+    $self->atomList (@_);
 }
 
 sub name_dref {
@@ -686,7 +703,7 @@ sub name_dref {
 
 sub dump_edts {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_edts {
@@ -697,18 +714,18 @@ sub name_edts {
 sub dump_elst {
     my $self = shift;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
 
-    my $items = NToSigned( $self->read(4) );
-    for ( 1 .. $items ) {
-        $self->append("  $_\n");
-        my $scale    = $self->findAtomValue('timescale');
-        my $duration = NToSigned( $self->read(4) );
-        my $durSecs  = $scale ? $duration / $scale : '---';
-        $self->append("    Duration: $duration ticks (${durSecs} seconds)\n");
-        $self->append( '    Start:    ', NToSigned( $self->read(4) ), "\n" );
-        $self->append( '    Rate:     ', NToFixed( $self->read(4) ),  "\n" );
+    my $items = NToSigned ($self->read (4));
+    for (1 .. $items) {
+        $self->append ("  $_\n");
+        my $scale = $self->findAtomValue ('timescale');
+        my $duration = NToSigned ($self->read (4));
+        my $durSecs = $scale ? $duration / $scale : '---';
+        $self->append ("    Duration: $duration ticks (${durSecs} seconds)\n");
+        $self->append ('    Start:    ', NToSigned ($self->read (4)), "\n");
+        $self->append ('    Rate:     ', NToFixed ($self->read (4)), "\n");
     }
 }
 
@@ -719,9 +736,9 @@ sub name_elst {
 
 sub dump_enfs {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_enfs {
@@ -731,14 +748,14 @@ sub name_enfs {
 
 sub dump_evnt {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Event type:     ', $self->get4Char(), "\n" );
+    $self->append ('Event type:     ', $self->get4Char (), "\n");
 
-    NToSigned( $self->read(4) );
-    $self->append("Reserved\n");
-    $self->read(4);
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    NToSigned ($self->read (4));
+    $self->append      ("Reserved\n");
+    $self->read        (4);
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_evnt {
@@ -748,10 +765,10 @@ sub name_evnt {
 
 sub dump_expr {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_expr {
@@ -761,9 +778,9 @@ sub name_expr {
 
 sub dump_free {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append("Padding = $len bytes\n");
+    $self->append ("Padding = $len bytes\n");
     $self->{parsedSize} += $len - 8;
 }
 
@@ -774,7 +791,7 @@ sub name_free {
 
 sub dump_ftyp {
     my $self = shift;
-    $self->append( unpack( "a4", $self->read(4) ), "\n" );
+    $self->append (unpack ("a4", $self->read (4)), "\n");
 }
 
 sub name_ftyp {
@@ -784,7 +801,7 @@ sub name_ftyp {
 
 sub dump_gmhd {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_gmhd {
@@ -795,13 +812,13 @@ sub name_gmhd {
 sub dump_gmin {
     my $self = shift;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    $self->showGMode();
-    $self->showRGB();
-    $self->append( 'Balance:  ', nToSigned( $self->read(2) ), "\n" );
-    $self->append("Reserved\n");
-    $self->read(2);
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    $self->showGMode ();
+    $self->showRGB   ();
+    $self->append    ('Balance:  ', nToSigned ($self->read (2)), "\n");
+    $self->append    ("Reserved\n");
+    $self->read      (2);
 }
 
 sub name_gmin {
@@ -810,27 +827,29 @@ sub name_gmin {
 }
 
 sub dump_hdlr {
-    my $self    = shift;
+    my $self = shift;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
 
-    my $cmpt = $self->get4Char();
-    $self->append( 'Component type:     ', $cmpt, "\n" );
+    my $cmpt = $self->get4Char ();
+    $self->append ('Component type:     ', $cmpt, "\n");
 
-    my $subCmpt = $self->get4Char();
-    $self->append( 'Component sub type: ', $subCmpt, "\n" );
+    my $subCmpt = $self->get4Char ();
+    $self->append ('Component sub type: ', $subCmpt, "\n");
 
-    $self->setParentAttrib (HdlrCmpt => $cmpt);
+    $self->setParentAttrib (HdlrCmpt    => $cmpt);
     $self->setParentAttrib (HdlrSubCmpt => $subCmpt);
 
-    $self->append( 'Manufacturer:       ', $self->get4Char(), "\n" );
-    $self->append( 'Flags:              ', unpack( 'B32', $self->read(4) ), "\n" );
-    $self->append( 'Mask:               ', unpack( 'B32', $self->read(4) ), "\n" );
+    $self->append ('Manufacturer:       ', $self->get4Char (), "\n");
+    $self->append ('Flags:              ', unpack ('B32', $self->read (4)),
+        "\n");
+    $self->append ('Mask:               ', unpack ('B32', $self->read (4)),
+        "\n");
 
-    my $strLen = ord( $self->read(1) );
-    $self->append( 'Name:               ',
-        unpack( "a$strLen", $self->read($strLen) ), "\n" );
+    my $strLen = ord ($self->read (1));
+    $self->append ('Name:               ',
+        unpack ("a$strLen", $self->read ($strLen)), "\n");
 }
 
 sub name_hdlr {
@@ -840,10 +859,10 @@ sub name_hdlr {
 
 sub dump_imag {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_imag {
@@ -853,10 +872,10 @@ sub name_imag {
 
 sub dump_imct {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_imct {
@@ -866,10 +885,10 @@ sub name_imct {
 
 sub dump_imda {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
     $len -= 8;
-    $self->append( "Image data " . groupDigits($len) . " bytes long\n" );
+    $self->append ("Image data " . groupDigits ($len) . " bytes long\n");
     $self->{parsedSize} += $len;
 }
 
@@ -881,7 +900,7 @@ sub name_imda {
 sub dump_imgp {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_imgp {
@@ -891,11 +910,11 @@ sub name_imgp {
 
 sub dump_imrg {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->append( 'X:         ', NToFixed( $self->read(4) ), "\n" );
-    $self->append( 'Y:         ', NToFixed( $self->read(4) ), "\n" );
+    $self->showUnknown ();
+    $self->append      ('X:         ', NToFixed ($self->read (4)), "\n");
+    $self->append      ('Y:         ', NToFixed ($self->read (4)), "\n");
 }
 
 sub name_imrg {
@@ -905,11 +924,11 @@ sub name_imrg {
 
 sub dump_list {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Id:    ', NToSigned( $self->read(4) ), "\n" );
-    $self->append( 'Items: ', NToSigned( $self->read(4) ), "\n" );
-    $self->unwrapAtoms( $pos + 8, $len - 8 );
+    $self->append ('Id:    ', NToSigned ($self->read (4)), "\n");
+    $self->append ('Items: ', NToSigned ($self->read (4)), "\n");
+    $self->unwrapAtoms ($pos + 8, $len - 8);
 }
 
 sub name_list {
@@ -919,10 +938,10 @@ sub name_list {
 
 sub dump_mdat {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
     $len -= 8;
-    $self->append( "Media data " . groupDigits($len) . " bytes long.\n" );
+    $self->append ("Media data " . groupDigits ($len) . " bytes long.\n");
 }
 
 sub name_mdat {
@@ -932,25 +951,26 @@ sub name_mdat {
 
 sub dump_MCPS {
     my $self = shift;
-    my ( $pos, $len ) = @_;
-    $self->dumpText( $pos + 8, $len - 8 );
+    my ($pos, $len) = @_;
+    $self->dumpText ($pos + 8, $len - 8);
 }
 
 sub dump_mdhd {
     my $self = shift;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    $self->append( 'Creation time:     ', $self->showDate(), "\n" );
-    $self->append( 'Modification time: ', $self->showDate(), "\n" );
-    my $timescale = NToSigned( $self->read(4) );
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    $self->append ('Creation time:     ', $self->showDate (), "\n");
+    $self->append ('Modification time: ', $self->showDate (), "\n");
+    my $timescale = NToSigned ($self->read (4));
     $self->setParentAttrib (timescale => $timescale);
-    $self->append("Time scale:        $timescale ticks per second\n");
-    my $duration = NToSigned( $self->read(4) );
-    my $durSecs  = $duration / $timescale;
-    $self->append("Duration:          $duration ticks (${durSecs} seconds)\n");
-    $self->append( 'Locale:            ', nToSigned( $self->read(2) ), "\n" );
-    $self->append( 'Quality:           ', unpack( 'B16', $self->read(2) ), "\n" );
+    $self->append ("Time scale:        $timescale ticks per second\n");
+    my $duration = NToSigned ($self->read (4));
+    my $durSecs = $duration / $timescale;
+    $self->append ("Duration:          $duration ticks (${durSecs} seconds)\n");
+    $self->append ('Locale:            ', nToSigned ($self->read (2)), "\n");
+    $self->append ('Quality:           ', unpack ('B16', $self->read (2)),
+        "\n");
 }
 
 sub name_mdhd {
@@ -960,7 +980,7 @@ sub name_mdhd {
 
 sub dump_mdia {
     my $self = shift;
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_mdia {
@@ -971,7 +991,7 @@ sub name_mdia {
 sub dump_minf {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_minf {
@@ -997,7 +1017,7 @@ sub name_mmdr {
 sub dump_moov {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_moov {
@@ -1007,10 +1027,10 @@ sub name_moov {
 
 sub dump_motx {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->append( 'Track index: ', NToSigned( $self->read(4) ), "\n" );
+    $self->showUnknown ();
+    $self->append ('Track index: ', NToSigned ($self->read (4)), "\n");
 }
 
 sub name_motx {
@@ -1020,47 +1040,47 @@ sub name_motx {
 
 sub dump_mvhd {
     my $self = shift;
-    my ( $pos, $len ) = @_;
-    my $buffer = $self->read( $len - 8 );
+    my ($pos, $len) = @_;
+    my $buffer = $self->read ($len - 8);
 
-    $self->append( 'Version:       ',
-        unpack( 'C', substr( $buffer, 0, 1, '' ) ) . "\n" );
-    $self->append( 'Flags:         ',
-        unpack( 'B24', substr( $buffer, 0, 3, '' ) ) . "\n" );
-    $self->append( 'Created:       ',
-        $self->showDate( substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Modified:      ',
-        $self->showDate( substr( $buffer, 0, 4, '' ) ) . "\n" );
+    $self->append ('Version:       ',
+        unpack ('C', substr ($buffer, 0, 1, '')) . "\n");
+    $self->append ('Flags:         ',
+        unpack ('B24', substr ($buffer, 0, 3, '')) . "\n");
+    $self->append ('Created:       ',
+        $self->showDate (substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Modified:      ',
+        $self->showDate (substr ($buffer, 0, 4, '')) . "\n");
 
-    my $timescale = NToSigned( substr( $buffer, 0, 4, '' ) );
+    my $timescale = NToSigned (substr ($buffer, 0, 4, ''));
     $self->setParentAttrib (timescale => $timescale);
-    $self->append("Time scale:    $timescale ticks per second\n");
+    $self->append ("Time scale:    $timescale ticks per second\n");
 
-    my $duration = unpack( "N", substr( $buffer, 0, 4, '' ) );
+    my $duration = unpack ("N", substr ($buffer, 0, 4, ''));
     my $durSecs = $duration / $timescale;
-    $self->append("Duration:      $duration ticks (${durSecs} seconds)\n");
-    $self->append( 'Pref rate:     ',
-        NToFixed( substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Pref vol:      ',
-        unpack( "n", substr( $buffer, 0, 2, '' ) ) . "\n" );
-    $self->append("Reserved\n");
+    $self->append ("Duration:      $duration ticks (${durSecs} seconds)\n");
+    $self->append ('Pref rate:     ',
+        NToFixed (substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Pref vol:      ',
+        unpack ("n", substr ($buffer, 0, 2, '')) . "\n");
+    $self->append ("Reserved\n");
     substr $buffer, 0, 10, '';
-    $self->append( 'Matrix:        ',
-        $self->showMatrix( substr( $buffer, 0, 36, '' ) ) . "\n" );
-    $self->append( 'Preview start: ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Preview time:  ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Poster loc:    ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Sel start:     ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Sel time:      ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    $self->append( 'Time now:      ',
-        unpack( "N", substr( $buffer, 0, 4, '' ) ) . "\n" );
-    my $nextTrackId = unpack( "N", substr( $buffer, 0, 4, '' ) );
-    $self->append("Next track: $nextTrackId\n");
+    $self->append ('Matrix:        ',
+        $self->showMatrix (substr ($buffer, 0, 36, '')) . "\n");
+    $self->append ('Preview start: ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Preview time:  ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Poster loc:    ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Sel start:     ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Sel time:      ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    $self->append ('Time now:      ',
+        unpack ("N", substr ($buffer, 0, 4, '')) . "\n");
+    my $nextTrackId = unpack ("N", substr ($buffer, 0, 4, ''));
+    $self->append ("Next track: $nextTrackId\n");
     $self->{tracks} = $nextTrackId - 1;
 }
 
@@ -1071,15 +1091,14 @@ sub name_mvhd {
 
 sub dump_name {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
     my $parentType = $self->{atomStack}[-2][0];
 
-    if ( $parentType eq 'imag' ) {
-        $self->showUnknown();
-        $self->dumpUnicodeText( $pos + 12, $len - 12 );
-    }
-    else {
-        $self->dumpText( $pos + 8, $len - 8 );
+    if ($parentType eq 'imag') {
+        $self->showUnknown ();
+        $self->dumpUnicodeText ($pos + 12, $len - 12);
+    } else {
+        $self->dumpText ($pos + 8, $len - 8);
     }
 }
 
@@ -1090,13 +1109,13 @@ sub name_name {
 
 sub dump_oper {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Operation: ', $self->get4Char(), "\n" );
-    $self->append( 'Operands:  ', NToSigned( $self->read(4) ), "\n" );
-    $self->append("Reserved\n");
-    $self->read(4);
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->append ('Operation: ', $self->get4Char (), "\n");
+    $self->append ('Operands:  ', NToSigned ($self->read (4)), "\n");
+    $self->append ("Reserved\n");
+    $self->read   (4);
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_oper {
@@ -1106,10 +1125,10 @@ sub name_oper {
 
 sub dump_oprn {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub name_oprn {
@@ -1119,15 +1138,15 @@ sub name_oprn {
 
 sub dump_parm {
     my $self = shift;
-    my ( $pos, $len ) = @_;
-    my $paramID = NToSigned( $self->read(4) );
+    my ($pos, $len) = @_;
+    my $paramID = NToSigned ($self->read (4));
 
-    $self->append( 'ID:        ', $paramID,                    "\n" );
-    $self->append( 'Unknown 2: ', NToSigned( $self->read(4) ), "\n" );
-    $self->append( 'Unknown 3: ', NToSigned( $self->read(4) ), "\n" );
+    $self->append ('ID:        ', $paramID, "\n");
+    $self->append ('Unknown 2: ', NToSigned ($self->read (4)), "\n");
+    $self->append ('Unknown 3: ', NToSigned ($self->read (4)), "\n");
 
-    my $actionStr = $self->findAtomValue('ActionType');
-    my $atoms     = qq/
+    my $actionStr = $self->findAtomValue ('ActionType');
+    my $atoms = qq/
         kActionCase | kActionWhile
         /;
     my $flags = qq/
@@ -1164,51 +1183,41 @@ sub dump_parm {
         kActionMovieGoToTime
         /;
 
-    if ( $actionStr =~ m/$atoms/x ) {
-        $self->unwrapAtoms( $pos + 12, $len - 12 );
-    }
-    elsif ( $actionStr =~ m/$time/x ) {
-        $self->unwrapAtoms( $pos + 12, $len - 12 );
-    }
-    elsif ( $actionStr =~ m/$flags/x ) {
-        $self->append( 'Flags: ', NToBin( $self->read(4) ), "\n" );
-    }
-    elsif ( $actionStr =~ m/$fixed/x ) {
-        $self->append( 'Value: ', NToFixed( $self->read(4) ), "\n" );
-    }
-    elsif ( $actionStr =~ m/$fixedFixedBool/x ) {
-        $self->append( 'Value 1:    ', NToFixed( $self->read(4) ), "\n" );
-        $self->append( 'Value 2:    ', NToFixed( $self->read(4) ), "\n" );
-        $self->append( 'Bool value: ', cToBool( $self->read(1) ),  "\n" );
-    }
-    elsif ( $actionStr =~ m/$long/x ) {
-        $self->append( 'Value: ', groupDigits( NToSigned( $self->read(4) ) ),
-            "\n" );
-    }
-    elsif ( $actionStr =~ m/$name/x ) {
-        $self->dumpText( $pos + 12, $len - 12 );
-    }
-    elsif ( $actionStr =~ m/$quadFloat/x ) {
-        if ( $paramID == 1 ) {
-            $self->append( 'ID: ', NToSigned( $self->read(4) ), "\n" );
+    if ($actionStr =~ m/$atoms/x) {
+        $self->unwrapAtoms ($pos + 12, $len - 12);
+    } elsif ($actionStr =~ m/$time/x) {
+        $self->unwrapAtoms ($pos + 12, $len - 12);
+    } elsif ($actionStr =~ m/$flags/x) {
+        $self->append ('Flags: ', NToBin ($self->read (4)), "\n");
+    } elsif ($actionStr =~ m/$fixed/x) {
+        $self->append ('Value: ', NToFixed ($self->read (4)), "\n");
+    } elsif ($actionStr =~ m/$fixedFixedBool/x) {
+        $self->append ('Value 1:    ', NToFixed ($self->read (4)), "\n");
+        $self->append ('Value 2:    ', NToFixed ($self->read (4)), "\n");
+        $self->append ('Bool value: ', cToBool  ($self->read (1)), "\n");
+    } elsif ($actionStr =~ m/$long/x) {
+        $self->append ('Value: ', groupDigits (NToSigned ($self->read (4))),
+            "\n");
+    } elsif ($actionStr =~ m/$name/x) {
+        $self->dumpText ($pos + 12, $len - 12);
+    } elsif ($actionStr =~ m/$quadFloat/x) {
+        if ($paramID == 1) {
+            $self->append ('ID: ', NToSigned ($self->read (4)), "\n");
+        } else {
+            $self->append ('value: ', $self->fToFloat ($self->read (4)), "\n");
         }
-        else {
-            $self->append( 'value: ', $self->fToFloat( $self->read(4) ), "\n" );
-        }
-    }
-    elsif ( $actionStr =~ m/$rgnHandle/x ) {
-        $self->append( 'Size:   ', nToSigned( $self->read(2) ), "\n" );
-        $self->append( 'Top:    ', nToSigned( $self->read(2) ), "\n" );
-        $self->append( 'Left:   ', nToSigned( $self->read(2) ), "\n" );
-        $self->append( 'Bottom: ', nToSigned( $self->read(2) ), "\n" );
-        $self->append( 'Right:  ', nToSigned( $self->read(2) ), "\n" );
-    }
-    elsif ( $actionStr =~ m/$short/x ) {
-        $self->append( 'Value: ', nToSigned( $self->read(2) ), "\n" );
-    }
-    else {
-        $self->append("Unhandled parameter for action: $actionStr\n");
-        print "Unhandled parameter for action: $actionStr\n";
+    } elsif ($actionStr =~ m/$rgnHandle/x) {
+        $self->append ('Size:   ', nToSigned ($self->read (2)), "\n");
+        $self->append ('Top:    ', nToSigned ($self->read (2)), "\n");
+        $self->append ('Left:   ', nToSigned ($self->read (2)), "\n");
+        $self->append ('Bottom: ', nToSigned ($self->read (2)), "\n");
+        $self->append ('Right:  ', nToSigned ($self->read (2)), "\n");
+    } elsif ($actionStr =~ m/$short/x) {
+        $self->append ('Value: ', nToSigned ($self->read (2)), "\n");
+    } else {
+        $self->append ("Unhandled parameter for action: $actionStr\n");
+        print "Unhandled parameter for action: $actionStr\n"
+            if $self->{noise} > 1;
     }
 }
 
@@ -1219,9 +1228,9 @@ sub name_parm {
 
 sub dump_play {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_play {
@@ -1229,13 +1238,103 @@ sub name_play {
     return 'Auto play';
 }
 
+sub dump_rdrf {
+    my $self = shift;
+    my ($pos, $len) = @_;
+
+    $self->append ('Flags:               ', NToBin ($self->read (4)), "\n");
+    $self->append ('Data reference type: ', $self->get4Char (4), "\n");
+    my $size = NToSigned ($self->read (4));
+    $self->append ('Data reference size: ', $size, "\n");
+    $self->append ('Data reference:      ', $self->read ($size), "\n");
+}
+
+sub name_rdrf {
+    my $self = shift;
+    return 'Data reference';
+}
+
+sub dump_rmcs {
+    my $self = shift;
+    my ($pos, $len) = @_;
+
+    $self->append ('Flags:     ', NToBin    ($self->read (4)), "\n");
+    $self->append ('CPU speed: ', NToSigned ($self->read (4)), "\n");
+}
+
+sub name_rmcs {
+    my $self = shift;
+    return 'CPU speed';
+}
+
+sub dump_rmda {
+    my $self = shift;
+    $self->unwrapAtoms (@_);
+}
+
+sub name_rmda {
+    my $self = shift;
+    return 'Reference movie descriptor';
+}
+
+sub dump_rmdr {
+    my $self = shift;
+    my ($pos, $len) = @_;
+
+    $self->append ('Flags:     ', NToBin    ($self->read (4)), "\n");
+    $self->append ('Data rate: ', NToSigned ($self->read (4)), "\n");
+}
+
+sub name_rmdr {
+    my $self = shift;
+    return 'Data rate';
+}
+
+sub dump_rmqu {
+    my $self = shift;
+    my ($pos, $len) = @_;
+
+    $self->append ('Quality: ', NToSigned ($self->read (4)), "\n");
+}
+
+sub name_rmqu {
+    my $self = shift;
+    return 'Quality';
+}
+
+sub dump_rmra {
+    my $self = shift;
+    $self->unwrapAtoms (@_);
+}
+
+sub name_rmra {
+    my $self = shift;
+    return 'Reference movie';
+}
+
+sub dump_rmvc {
+    my $self = shift;
+    my ($pos, $len) = @_;
+
+    $self->append ('Flags:            ', NToBin ($self->read (4)), "\n");
+    $self->append ('Software package: ', $self->get4Char (), "\n");
+    $self->append ('Version:          ', NToHex    ($self->read (4)), "\n");
+    $self->append ('Mask:             ', NToHex    ($self->read (4)), "\n");
+    $self->append ('Check type:       ', nToSigned ($self->read (2)), "\n");
+}
+
+sub name_rmvc {
+    my $self = shift;
+    return 'Version check';
+}
+
 sub dump_sean {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
     my $end = $pos + $len;
 
     $pos += 20;
-    $self->describeAtomsIn( $pos, $end );
+    $self->describeAtomsIn ($pos, $end);
 }
 
 sub name_sean {
@@ -1245,9 +1344,9 @@ sub name_sean {
 
 sub dump_slau {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_slau {
@@ -1257,9 +1356,9 @@ sub name_slau {
 
 sub dump_slgr {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_slgr {
@@ -1269,9 +1368,9 @@ sub name_slgr {
 
 sub dump_slti {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_slti {
@@ -1281,9 +1380,9 @@ sub name_slti {
 
 sub dump_sltr {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Enabled: ', cToBool( $self->read(1) ), "\n" );
+    $self->append ('Enabled: ', cToBool ($self->read (1)), "\n");
 }
 
 sub name_sltr {
@@ -1294,8 +1393,8 @@ sub name_sltr {
 sub dump_spid {
     my $self = shift;
 
-    $self->showUnknown();
-    $self->append( 'Sprite id: ', NToSigned( $self->read(4) ), "\n" );
+    $self->showUnknown ();
+    $self->append ('Sprite id: ', NToSigned ($self->read (4)), "\n");
 }
 
 sub name_spid {
@@ -1306,7 +1405,7 @@ sub name_spid {
 sub dump_stbl {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_stbl {
@@ -1334,12 +1433,10 @@ sub dump_stco {
         $self->append ("$type @ ", sprintf "%d (0x%04x)\n", $off, $off);
         if ($type =~ /sprt|moov/) {
             $self->describeAtom ($off + 12);
-        }
-        elsif ($type eq 'vide') {
+        } elsif ($type eq 'vide') {
             $self->append ("    Not expanded\n");
-        }
-        else {
-            print "stco doesn't handle $type chunks\n";
+        } else {
+            print "stco doesn't handle $type chunks\n" if $self->{noise} > 1;
             next;
         }
     }
@@ -1353,7 +1450,7 @@ sub name_stco {
 sub dump_sprt {
     my $self = shift;
 
-    $self->atomList(@_);
+    $self->atomList (@_);
 }
 
 sub name_sprt {
@@ -1363,18 +1460,20 @@ sub name_sprt {
 
 sub dump_stsc {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    my $entries = NToSigned( $self->read(4) );
-    my $digits  = length $entries;
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    my $entries = NToSigned ($self->read (4));
+    my $digits = length $entries;
 
-    for ( 1 .. $entries ) {
-        $self->append( sprintf( "  %*d\n", $digits, $_ ) );
-        $self->append( '    first chunk: ',    NToSigned( $self->read(4) ), "\n" );
-        $self->append( '    samp per chunk: ', NToSigned( $self->read(4) ), "\n" );
-        $self->append( '    samp desc id:   ', NToSigned( $self->read(4) ), "\n" );
+    for (1 .. $entries) {
+        $self->append (sprintf ("  %*d\n", $digits, $_));
+        $self->append ('    first chunk: ', NToSigned ($self->read (4)), "\n");
+        $self->append ('    samp per chunk: ', NToSigned ($self->read (4)),
+            "\n");
+        $self->append ('    samp desc id:   ', NToSigned ($self->read (4)),
+            "\n");
     }
 }
 
@@ -1385,20 +1484,20 @@ sub name_stsc {
 
 sub dump_stsd {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    my $entries = NToSigned( $self->read(4) );
-    my $digits  = length $entries;
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    my $entries = NToSigned ($self->read (4));
+    my $digits = length $entries;
 
-    for ( 1 .. $entries ) {
-        $self->append( sprintf( "  %*d\n", $digits, $_ ) );
-        NToSigned( $self->read(4) );
-        $self->append( '    format:  ', $self->get4Char(), "\n" );
-        $self->append("    Reserved\n");
-        NToSigned( $self->read(6) );
-        $self->append( '    index:   ', nToSigned( $self->read(2) ), "\n" );
+    for (1 .. $entries) {
+        $self->append (sprintf ("  %*d\n", $digits, $_));
+        NToSigned ($self->read (4));
+        $self->append ('    format:  ', $self->get4Char (), "\n");
+        $self->append ("    Reserved\n");
+        NToSigned ($self->read (6));
+        $self->append ('    index:   ', nToSigned ($self->read (2)), "\n");
     }
 }
 
@@ -1410,15 +1509,15 @@ sub name_stsd {
 sub dump_stsh {
     my $self = shift;
 
-    $self->append( 'Version: ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:   ', unpack( 'B24', $self->read(3) ), "\n" );
-    my $entries = NToSigned( $self->read(4) );
-    my $digits  = length $entries;
+    $self->append ('Version: ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:   ', unpack ('B24', $self->read (3)), "\n");
+    my $entries = NToSigned ($self->read (4));
+    my $digits = length $entries;
 
-    for ( 1 .. $entries ) {
-        $self->append( sprintf( "%*d ", $digits, $_ ) );
-        $self->append( 'frame diff samp # ', NToSigned( $self->read(4) ) );
-        $self->append( ' => sync samp # ', NToSigned( $self->read(4) ), "\n" );
+    for (1 .. $entries) {
+        $self->append (sprintf ("%*d ", $digits, $_));
+        $self->append ('frame diff samp # ', NToSigned ($self->read (4)));
+        $self->append (' => sync samp # ', NToSigned ($self->read (4)), "\n");
     }
 }
 
@@ -1430,23 +1529,22 @@ sub name_stsh {
 sub dump_stsz {
     my $self = shift;
 
-    $self->append( 'Version: ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:   ', unpack( 'B24', $self->read(3) ), "\n" );
+    $self->append ('Version: ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:   ', unpack ('B24', $self->read (3)), "\n");
 
-    my $sampleSize = NToSigned( $self->read(4) );
-    my $entries    = NToSigned( $self->read(4) );
+    my $sampleSize = NToSigned ($self->read (4));
+    my $entries    = NToSigned ($self->read (4));
 
     if ($sampleSize) {
-        $self->append("Sample size: $sampleSize\n");
-        $self->append("Samples:     $entries\n");
-    }
-    else {
+        $self->append ("Sample size: $sampleSize\n");
+        $self->append ("Samples:     $entries\n");
+    } else {
         my $digits = length $entries;
 
-        for ( 1 .. $entries ) {
-            $self->append( sprintf( "  %*d: ", $digits, $_ ) );
-            $sampleSize = NToSigned( $self->read(4) );
-            $self->append("sample size $sampleSize\n");
+        for (1 .. $entries) {
+            $self->append (sprintf ("  %*d: ", $digits, $_));
+            $sampleSize = NToSigned ($self->read (4));
+            $self->append ("sample size $sampleSize\n");
             $self->{parsedSize} += $sampleSize;
         }
     }
@@ -1460,7 +1558,7 @@ sub name_stsz {
 sub dump_stss {
     my $self = shift;
 
-    $self->dump_stts(@_);
+    $self->dump_stts (@_);
 }
 
 sub name_stss {
@@ -1470,21 +1568,22 @@ sub name_stss {
 
 sub dump_stts {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    my $entries = NToSigned( $self->read(4) );
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    my $entries = NToSigned ($self->read (4));
     my $digits  = length $entries;
-    my $scale   = $self->findAtomValue('timescale');
+    my $scale   = $self->findAtomValue ('timescale');
 
-    for ( 1 .. $entries ) {
-        $self->append( sprintf( "  %*d\n", $digits, $_ ) );
-        $self->append( '    Sample count: ', NToSigned( $self->read(4) ), "\n" );
+    for (1 .. $entries) {
+        $self->append (sprintf ("  %*d\n", $digits, $_));
+        $self->append ('    Sample count: ', NToSigned ($self->read (4)), "\n");
 
-        my $duration = NToSigned( $self->read(4) );
+        my $duration = NToSigned ($self->read (4));
         my $durSecs = $scale ? $duration / $scale : '---';
-        $self->append("    Duration:   $duration ticks (${durSecs} seconds)\n");
+        $self->append (
+            "    Duration:   $duration ticks (${durSecs} seconds)\n");
     }
 }
 
@@ -1495,44 +1594,44 @@ sub name_stts {
 
 sub dump_targ {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub dump_test {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->unwrapAtoms( $pos + 12, $len - 12 );
+    $self->showUnknown ();
+    $self->unwrapAtoms ($pos + 12, $len - 12);
 }
 
 sub dump_tkhd {
     my $self = shift;
 
-    $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-    $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
-    $self->append( 'Creation time:     ', $self->showDate(), "\n" );
-    $self->append( 'Modification time: ', $self->showDate(), "\n" );
-    $self->append( 'Track ID:          ', unpack( "N", $self->read(4) ), "\n" );
-    $self->append("Reserved\n");
-    $self->read(4);
-    my $scale    = $self->findAtomValue('timescale');
-    my $duration = NToSigned( $self->read(4) );
-    my $durSecs  = $scale ? $duration / $scale : '---';
-    $self->append("Duration:          $duration ticks (${durSecs} seconds)\n");
-    $self->append("Reserved\n");
-    $self->read(8);
-    $self->append( 'Layer:             ', nToSigned( $self->read(2) ),   "\n" );
-    $self->append( 'Alternate group:   ', nToSigned( $self->read(2) ),   "\n" );
-    $self->append( 'Volume:            ', nToUnsigned( $self->read(2) ), "\n" );
-    $self->append("Reserved\n");
-    $self->read(2);
-    $self->append( 'Matrix structure:  ', $self->showMatrix(),        "\n" );
-    $self->append( 'Track width:       ', NToFixed( $self->read(4) ), "\n" );
-    $self->append( 'Track height:      ', NToFixed( $self->read(4) ), "\n" );
+    $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+    $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
+    $self->append ('Creation time:     ', $self->showDate (), "\n");
+    $self->append ('Modification time: ', $self->showDate (), "\n");
+    $self->append ('Track ID:          ', unpack ("N", $self->read (4)), "\n");
+    $self->append ("Reserved\n");
+    $self->read   (4);
+    my $scale = $self->findAtomValue ('timescale');
+    my $duration = NToSigned ($self->read (4));
+    my $durSecs = $scale ? $duration / $scale : '---';
+    $self->append ("Duration:          $duration ticks (${durSecs} seconds)\n");
+    $self->append ("Reserved\n");
+    $self->read   (8);
+    $self->append ('Layer:             ', nToSigned ($self->read (2)), "\n");
+    $self->append ('Alternate group:   ', nToSigned ($self->read (2)), "\n");
+    $self->append ('Volume:            ', nToUnsigned ($self->read (2)), "\n");
+    $self->append ("Reserved\n");
+    $self->read   (2);
+    $self->append ('Matrix structure:  ', $self->showMatrix (), "\n");
+    $self->append ('Track width:       ', NToFixed ($self->read (4)), "\n");
+    $self->append ('Track height:      ', NToFixed ($self->read (4)), "\n");
 }
 
 sub name_tkhd {
@@ -1543,7 +1642,7 @@ sub name_tkhd {
 sub dump_trak {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_trak {
@@ -1553,10 +1652,10 @@ sub name_trak {
 
 sub dump_trin {
     my $self = shift;
-    my ( $pos, $len ) = @_;
+    my ($pos, $len) = @_;
 
-    $self->showUnknown();
-    $self->append( 'Track index: ', NToSigned( $self->read(4) ), "\n" );
+    $self->showUnknown ();
+    $self->append ('Track index: ', NToSigned ($self->read (4)), "\n");
 }
 
 sub name_trin {
@@ -1567,7 +1666,7 @@ sub name_trin {
 sub dump_udta {
     my $self = shift;
 
-    $self->unwrapAtoms(@_);
+    $self->unwrapAtoms (@_);
 }
 
 sub name_udta {
@@ -1579,15 +1678,14 @@ sub dump_vmhd {
     my $self   = shift;
     my $parent = $self->{atomStack}[-2][0];
 
-    if ( $parent eq 'minf' ) {
-        $self->append( 'Version:  ', unpack( 'C',   $self->read(1) ), "\n" );
-        $self->append( 'Flags:    ', unpack( 'B24', $self->read(3) ), "\n" );
+    if ($parent eq 'minf') {
+        $self->append ('Version:  ', unpack ('C',   $self->read (1)), "\n");
+        $self->append ('Flags:    ', unpack ('B24', $self->read (3)), "\n");
 
-        $self->showGraphicsXferMode();
-        $self->showRGB();
-    }
-    else {
-        $self->append("Unhandled context ($parent) for VideoMediaInfo atom\n");
+        $self->showGraphicsXferMode ();
+        $self->showRGB              ();
+    } else {
+        $self->append ("Unhandled context ($parent) for VideoMediaInfo atom\n");
     }
 }
 
@@ -1598,8 +1696,8 @@ sub name_vmhd {
 
 sub dump_whic {
     my $self = shift;
-    my ( $pos, $len ) = @_;
-    my $dataRef = \%{ $self->getParentAttribs () };
+    my ($pos, $len) = @_;
+    my $dataRef = \%{$self->getParentAttribs ()};
     my %actions = (
         1024  => 'kActionMovieSetVolume',
         1025  => 'kActionMovieSetRate',
@@ -1677,12 +1775,12 @@ sub dump_whic {
         11265 => 'kActionMovieTrackLoadChildMovie',
     );
 
-    $self->showUnknown();
+    $self->showUnknown ();
 
-    my $action    = NToSigned( $self->read(4) );
+    my $action = NToSigned ($self->read (4));
     my $actionStr = $actions{$action};
     $actionStr = "Unknown - $action" if !defined $actionStr;
-    $self->append("Type: $actionStr\n");
+    $self->append ("Type: $actionStr\n");
     $dataRef->{'ActionType'} = $actionStr;
 }
 
@@ -1721,8 +1819,7 @@ sub dump_x00000001 {
 
         $self->showUnknown ();
         $self->unwrapAtoms ($pos + 12, $len - 12);
-    }
-    else {
+    } else {
 
         $self->showBogus ();
         $self->append ('Matrix structure:  ', $self->showMatrix (), "\n");
@@ -1735,8 +1832,7 @@ sub name_x00000001 {
 
     if ($parentType eq 'oprn') {
         return '';
-    }
-    else {
+    } else {
         return 'kSpritePropertyMatrix';
     }
 }
@@ -2161,8 +2257,7 @@ sub showGraphicsXferMode {
 
     if (exists $modes{$gMode}) {
         $self->append ('Mode:  ', $modes{$gMode}, "\n");
-    }
-    else {
+    } else {
         $self->append ('Mode:  unknown - ', $gMode, "\n");
     }
 }
@@ -2182,9 +2277,9 @@ sub showDate {
 
     # seconds difference between Mac epoch and Unix/Windows.
     my $mod =
-        ($^O =~ /MSWin32/)
-      ? (2063824538 - 12530100 + 31536000)
-      : (2063824538 - 12530100);
+          ($^O =~ /MSWin32/)
+        ? (2063824538 - 12530100 + 31536000)
+        : (2063824538 - 12530100);
     my $date = ($^O =~ /Mac/) ? localtime ($stamp) : localtime ($stamp - $mod);
     return $date;
 }
@@ -2288,8 +2383,7 @@ sub show {
     my $thing = shift;
     if ($thing =~ /^([^\x00]*)\x00\Z/) {
         return $1;
-    }
-    elsif ($thing =~ /[\x00-\x1f]/) {
+    } elsif ($thing =~ /[\x00-\x1f]/) {
         my $sum = 0;
         my @chars = split '', $thing;
         $sum = $sum * 256 + ord ($_) for @chars;
@@ -2356,7 +2450,7 @@ sub NToUnsigned {
 
 sub NToHex {
     my $str = shift;
-    return '0x' . unpack ('H8', pack ('L', unpack ("N", $str)));
+    return '0x' . unpack ('H8', $str);
 }
 
 =head3 NToBin
@@ -2365,7 +2459,7 @@ sub NToHex {
 
 sub NToBin {
     my $str = shift;
-    return unpack ('B32', pack ('L', unpack ("N", $str)));
+    return unpack ('B32', $str);
 }
 
 =head3 nToSigned
@@ -2484,6 +2578,11 @@ L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Video-Dumper-QuickTime>
 L<http://search.cpan.org/dist/Video-Dumper-QuickTime>
 
 =back
+
+=head1 ACKNOWLEDGEMENTS
+
+The author appreciates the receipt of a patch containing bug fixes and
+additional atom decoders from Nick Wellnhofer.
 
 =head1 AUTHOR
 

@@ -4,7 +4,7 @@ use warnings;
 use Test::More tests => 4;
 
 BEGIN {
-    use lib 'lib';    # For development testing
+    use lib '../lib';    # For development testing
 
     use_ok ('Video::Dumper::QuickTime');
 }

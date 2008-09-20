@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Video-Dumper-QuickTime
-version:             1.0001
+version:             1.0003
 abstract:            Dump QuickTime movie file structure
 license:             ~
 author:              

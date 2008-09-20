@@ -8,3 +8,14 @@ Revision history for Perl module Video::Dumper::QuickTime
     - Fix build prerequisites
     - Improve documentation
     - Fix gratuitious copy and past errors in pod_cover.t!
+
+1.0002 Fri 15 Feb 20:15:25 2008 (never released)
+    - Improve documentation
+    - Require Perl 5.7.3 for Encode
+
+1.0003 Fri 19 Sep 20:30:00 2008
+    - Improve documentation
+    - Provide reporting management
+    - Add rdrf and related atom decoding (supplied by Nick Wellnhofer)
+    - Fix NToHex and NToBin
+    
