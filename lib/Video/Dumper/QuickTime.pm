@@ -6,12 +6,11 @@ use strict;
 use warnings;
 use Carp;
 use Encode;
-use IO::File;
 
 BEGIN {
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    $VERSION     = '1.0003';
+    $VERSION     = '1.0004';
     @ISA         = qw(Exporter);
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
@@ -24,7 +23,7 @@ Video::Dumper::QuickTime - Dump QuickTime movie file structure
 
 =head1 VERSION
 
-Version 1.0003
+Version 1.0004
 
 =head1 SYNOPSIS
 
@@ -145,17 +144,15 @@ sub _init_attributes {
     $self->{filesize}   = -s $filename;
     $self->{nextUpdate} = $self->{filesize} / 100;
 
-    my $fh = new IO::File;
-    $fh->open ($self->{filename});
-    $self->{handle} = $fh;
+    open $self->{handle}, '<', $self->{filename}
+        or die "Can't open $self->{filename}: $!\n";
+    binmode $self->{handle};
 }
 
 sub _closeFile {
     my $self = shift;
-    my $fh   = new IO::File;
 
-    return if !defined $self->{handle};
-    $self->{handle}->close ();
+    $self->{handle}->close () if $self->{handle};
 }
 
 =head3 Dump
@@ -1436,7 +1433,8 @@ sub dump_stco {
         } elsif ($type eq 'vide') {
             $self->append ("    Not expanded\n");
         } else {
-            print "stco doesn't handle $type chunks\n" if $self->{noise} > 1;
+            print "stco doesn't handle $type chunks\n"
+                if $self->{noise} && $self->{noise} > 1;
             next;
         }
     }
@@ -2599,4 +2597,3 @@ The full text of the license can be found in the
 LICENSE file included with this module.
 
 =cut
-

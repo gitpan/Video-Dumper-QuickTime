@@ -2,7 +2,7 @@ NAME
     Video::Dumper::QuickTime - Dump QuickTime movie file structure
 
 VERSION
-    Version 1.0003
+    Version 1.0004
 
 SYNOPSIS
         use Video::Dumper::QuickTime;

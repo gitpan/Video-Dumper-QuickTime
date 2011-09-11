@@ -18,4 +18,9 @@ Revision history for Perl module Video::Dumper::QuickTime
     - Provide reporting management
     - Add rdrf and related atom decoding (supplied by Nick Wellnhofer)
     - Fix NToHex and NToBin
-    
+
+1.0004
+    - Remove dependiences on Test::Pod::Coverage and Test::Pod
+    - Open files using binmode
+    - Remove dependiency on IO::File
+

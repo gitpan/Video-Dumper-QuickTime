@@ -3,9 +3,9 @@ use warnings;
 
 package Subclass;
 
-use lib '.';
-use QuickTime;
-use base qw(QuickTime);
+use lib '../lib'; # For test context
+use Video::Dumper::QuickTime;
+use base qw(Video::Dumper::QuickTime);
 
 sub name_smhd {
     my $self = shift;
@@ -70,7 +70,7 @@ my $str = $file->Result ();
 
 $progressBar->destroy();
 
-print $errors;
+print $errors if $errors;
 
 $main->configure( -title => "QuickTime dump of $file->{'filename'}" );
 $tree = $main->ScrlTree(
@@ -184,4 +184,3 @@ sub closeTree {
     }
     $tree->setmode( $entryPath, 'open' ) if length $entryPath;
 }
-
