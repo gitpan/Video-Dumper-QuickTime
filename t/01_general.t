@@ -2,14 +2,16 @@ use strict;
 use warnings;
 
 use Test::More tests => 4;
+my $kTestFile = 't/Sample.mov';
 
 BEGIN {
     use lib '../lib';    # For development testing
-
     use_ok ('Video::Dumper::QuickTime');
 }
 
-my $object = Video::Dumper::QuickTime->new (-filename => 't/Sample.mov');
+$kTestFile = 'Sample.mov' if ! -e $kTestFile;
+
+my $object = Video::Dumper::QuickTime->new (-filename => $kTestFile);
 
 isa_ok ($object, 'Video::Dumper::QuickTime');
 

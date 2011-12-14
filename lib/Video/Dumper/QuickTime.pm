@@ -10,7 +10,7 @@ use Encode;
 BEGIN {
     use Exporter ();
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-    $VERSION     = '1.0004';
+    $VERSION     = '1.0005';
     @ISA         = qw(Exporter);
     @EXPORT      = qw();
     @EXPORT_OK   = qw();
@@ -152,7 +152,7 @@ sub _init_attributes {
 sub _closeFile {
     my $self = shift;
 
-    $self->{handle}->close () if $self->{handle};
+    close $self->{handle} if $self->{handle};
 }
 
 =head3 Dump
